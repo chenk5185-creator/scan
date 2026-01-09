@@ -233,19 +233,19 @@ def render_results(processed_data):
 
     st.markdown("---")
 
-    # 不同视图的标签页
+    # 不同视图的标签页 - 默认显示全部代币
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📈 链分布",
         "🪙 全部代币",
+        "📈 链分布",
         "👛 钱包汇总",
         "❌ 错误"
     ])
 
     with tab1:
-        render_chain_distribution(data)
+        render_all_tokens(data)
 
     with tab2:
-        render_all_tokens(data)
+        render_chain_distribution(data)
 
     with tab3:
         render_wallet_summary(data)
@@ -463,43 +463,14 @@ def main():
 
         progress_bar = st.progress(0)
         status_text = st.empty()
-        debug_container = st.container()
 
         try:
             status_text.text(f"正在扫描 {len(addresses)} 个地址...")
 
-            # 显示 API Key 状态（只显示前几位）
-            with debug_container:
-                st.info(f"🔑 API Key: {api_key[:20]}... (长度: {len(api_key)})")
-                st.info(f"📋 扫描地址: {addresses}")
-
             # 运行扫描
-            results, log_content = run_scan(addresses, api_key, workers, min_value)
+            results, _ = run_scan(addresses, api_key, workers, min_value)
 
-            progress_bar.progress(50)
-
-            # 显示 API 调用日志
-            with debug_container:
-                st.markdown("### 📋 API 调用日志")
-                if log_content:
-                    st.code(log_content, language="text")
-                else:
-                    st.warning("没有捕获到日志")
-
-            # 显示扫描结果统计
-            with debug_container:
-                success_count = sum(1 for r in results if r.is_success)
-                fail_count = sum(1 for r in results if not r.is_success)
-                total_tokens = sum(r.token_count for r in results)
-                st.info(f"📊 扫描完成: 成功 {success_count}, 失败 {fail_count}, 代币数 {total_tokens}")
-
-                # 显示每个结果的详情
-                for r in results:
-                    if r.error:
-                        st.warning(f"❌ {r.address[:10]}...: {r.error}")
-                    else:
-                        chains = ", ".join(r.active_chains) if r.active_chains else "无"
-                        st.success(f"✅ {r.address[:10]}...: {r.token_count} 代币, ${r.total_value_usd:.2f}, 链: {chains}")
+            progress_bar.progress(80)
 
             status_text.text("正在处理结果...")
 
