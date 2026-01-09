@@ -451,14 +451,35 @@ def main():
 
         progress_bar = st.progress(0)
         status_text = st.empty()
+        debug_container = st.container()
 
         try:
             status_text.text(f"正在扫描 {len(addresses)} 个地址...")
+
+            # 显示 API Key 状态（只显示前几位）
+            with debug_container:
+                st.info(f"🔑 API Key: {api_key[:8]}...{api_key[-4:]} (长度: {len(api_key)})")
 
             # 运行扫描
             results = run_scan(addresses, api_key, workers, min_value)
 
             progress_bar.progress(50)
+
+            # 显示扫描结果统计
+            with debug_container:
+                success_count = sum(1 for r in results if r.is_success)
+                fail_count = sum(1 for r in results if not r.is_success)
+                total_tokens = sum(r.token_count for r in results)
+                st.info(f"📊 扫描完成: 成功 {success_count}, 失败 {fail_count}, 代币数 {total_tokens}")
+
+                # 显示每个结果的详情
+                for r in results:
+                    if r.error:
+                        st.warning(f"❌ {r.address[:10]}...: {r.error}")
+                    else:
+                        chains = ", ".join(r.active_chains) if r.active_chains else "无"
+                        st.success(f"✅ {r.address[:10]}...: {r.token_count} 代币, ${r.total_value_usd:.2f}, 链: {chains}")
+
             status_text.text("正在处理结果...")
 
             # 处理结果
@@ -472,7 +493,7 @@ def main():
             st.session_state.scan_results = results
             st.session_state.processed_data = processed_data
 
-            time.sleep(0.5)
+            time.sleep(1)
             st.rerun()
 
         except Exception as e:
