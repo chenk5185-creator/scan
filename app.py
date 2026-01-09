@@ -21,6 +21,7 @@ from config import (
     MAX_WORKERS,
     MIN_TOKEN_VALUE_USD,
     DEFAULT_OUTPUT_FILE,
+    MORALIS_API_KEY,
 )
 from scanner import WalletScanner, WalletResult
 from processor import DataProcessor
@@ -154,15 +155,6 @@ def render_sidebar():
     """渲染侧边栏配置选项。"""
     st.sidebar.markdown("## ⚙️ 配置设置")
 
-    # API 密钥
-    api_key = st.sidebar.text_input(
-        "Moralis API 密钥",
-        type="password",
-        help="输入你的 Moralis API 密钥（可在 moralis.io 免费获取）",
-    )
-
-    st.sidebar.markdown("---")
-
     # 扫描设置
     st.sidebar.markdown("### 扫描设置")
 
@@ -197,7 +189,7 @@ def render_sidebar():
         "💡 **提示:** 扫描器会先检查每个钱包在哪些链上有活动，以优化 API 调用次数。"
     )
 
-    return api_key, workers, min_value
+    return workers, min_value
 
 
 def render_results(processed_data):
@@ -409,7 +401,10 @@ def main():
     )
 
     # 侧边栏
-    api_key, workers, min_value = render_sidebar()
+    workers, min_value = render_sidebar()
+
+    # 使用配置的 API Key
+    api_key = MORALIS_API_KEY
 
     # 主内容
     st.markdown("## 📝 输入钱包地址")
@@ -436,16 +431,14 @@ def main():
             "🚀 开始扫描",
             type="primary",
             use_container_width=True,
-            disabled=not addresses or not api_key,
+            disabled=not addresses,
         )
 
-    if not api_key:
-        st.warning("⚠️ 请在侧边栏输入你的 Moralis API 密钥")
-    elif not addresses:
+    if not addresses:
         st.info("💡 在上方输入钱包地址以开始扫描")
 
     # 运行扫描
-    if scan_button and addresses and api_key:
+    if scan_button and addresses:
         st.markdown("---")
         st.markdown("## ⏳ 扫描中...")
 

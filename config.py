@@ -6,7 +6,7 @@ from typing import Dict, List
 
 # Moralis API Configuration
 MORALIS_API_BASE_URL = "https://deep-index.moralis.io/api/v2.2"
-MORALIS_API_KEY = os.getenv("MORALIS_API_KEY", "")
+MORALIS_API_KEY = os.getenv("MORALIS_API_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjU2MGM0OTQ5LTQxZDQtNDU1OC05NDU3LTk5NDM5MWU0MDI4OCIsIm9yZ0lkIjoiNDg5NDExIiwidXNlcklkIjoiNTAzNTQzIiwidHlwZUlkIjoiYmU2M2M0YWItOGQwZC00YzIwLWFlZDMtNzc1YWJiOWZmZjc2IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3Njc5NDMxNTYsImV4cCI6NDkyMzcwMzE1Nn0.wgB0hbV-BvzghjrqenAi5242zVqbVtMnPm5BoIii5UE")
 
 # Rate limiting (Moralis free tier: 25 req/sec)
 RATE_LIMIT_PER_SECOND = 10
