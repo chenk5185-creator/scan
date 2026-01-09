@@ -425,7 +425,18 @@ class ExcelExporter:
         """Auto-adjust column widths based on content."""
         for column_cells in ws.columns:
             max_length = 0
-            column = column_cells[0].column_letter
+            # Handle merged cells - get column letter from first non-merged cell
+            column = None
+            for cell in column_cells:
+                if hasattr(cell, 'column_letter'):
+                    column = cell.column_letter
+                    break
+                elif hasattr(cell, 'column'):
+                    column = get_column_letter(cell.column)
+                    break
+
+            if column is None:
+                continue
 
             for cell in column_cells:
                 try:
