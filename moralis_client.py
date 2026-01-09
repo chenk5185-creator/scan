@@ -4,6 +4,7 @@ Moralis API client with rate limiting for multi-chain wallet scanning.
 import time
 import threading
 import requests
+import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from config import (
@@ -17,6 +18,9 @@ from config import (
     CHAIN_HEX_IDS,
     NATIVE_TOKENS,
 )
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,24 +40,78 @@ class Token:
     is_native: bool
 
     @classmethod
+    def from_wallet_token_response(cls, data: Dict[str, Any], chain: str) -> "Token":
+        """Create Token from Moralis wallet token balance response (v2.2)."""
+        decimals = int(data.get("decimals", 18))
+
+        # Handle balance - can be string or int
+        balance_raw = data.get("balance", "0")
+        if isinstance(balance_raw, str):
+            raw_amount = int(balance_raw) if balance_raw else 0
+        else:
+            raw_amount = int(balance_raw)
+
+        amount = raw_amount / (10 ** decimals) if decimals > 0 else raw_amount
+
+        # Get USD price - check multiple fields
+        price = 0.0
+        if data.get("usd_price") is not None:
+            price = float(data.get("usd_price", 0))
+        elif data.get("usdPrice") is not None:
+            price = float(data.get("usdPrice", 0))
+
+        value_usd = price * amount
+
+        # Check if native token
+        is_native = data.get("native_token", False) or data.get("nativeToken", False)
+
+        # Get token address
+        token_address = data.get("token_address", "") or data.get("tokenAddress", "")
+        if is_native:
+            token_address = "0x0000000000000000000000000000000000000000"
+
+        return cls(
+            chain=chain,
+            symbol=data.get("symbol", "") or "UNKNOWN",
+            name=data.get("name", "") or "Unknown Token",
+            address=token_address,
+            decimals=decimals,
+            price=price,
+            amount=amount,
+            raw_amount=raw_amount,
+            value_usd=value_usd,
+            logo_url=data.get("logo", "") or data.get("thumbnail", "") or "",
+            is_verified=data.get("verified_contract", False) or data.get("verifiedContract", False),
+            is_native=is_native,
+        )
+
+    @classmethod
     def from_erc20_response(cls, data: Dict[str, Any], chain: str) -> "Token":
         """Create Token from Moralis ERC20 balance response."""
         decimals = int(data.get("decimals", 18))
-        raw_amount = int(data.get("balance", 0))
+
+        balance_raw = data.get("balance", "0")
+        if isinstance(balance_raw, str):
+            raw_amount = int(balance_raw) if balance_raw else 0
+        else:
+            raw_amount = int(balance_raw)
+
         amount = raw_amount / (10 ** decimals) if decimals > 0 else raw_amount
 
         # Get USD price if available
         price = 0.0
-        if data.get("usd_price"):
+        if data.get("usd_price") is not None:
             price = float(data.get("usd_price", 0))
+        elif data.get("usdPrice") is not None:
+            price = float(data.get("usdPrice", 0))
 
         value_usd = price * amount
 
         return cls(
             chain=chain,
-            symbol=data.get("symbol", ""),
-            name=data.get("name", ""),
-            address=data.get("token_address", ""),
+            symbol=data.get("symbol", "") or "UNKNOWN",
+            name=data.get("name", "") or "Unknown Token",
+            address=data.get("token_address", "") or data.get("tokenAddress", ""),
             decimals=decimals,
             price=price,
             amount=amount,
@@ -69,7 +127,12 @@ class Token:
         """Create Token from native balance."""
         native_info = NATIVE_TOKENS.get(chain, {"symbol": "ETH", "name": "Native", "decimals": 18})
         decimals = native_info["decimals"]
-        raw_amount = int(balance)
+
+        if isinstance(balance, str):
+            raw_amount = int(balance) if balance else 0
+        else:
+            raw_amount = int(balance)
+
         amount = raw_amount / (10 ** decimals)
         value_usd = price * amount
 
@@ -143,6 +206,8 @@ class MoralisClient:
         """Make an API request with rate limiting and retries."""
         url = f"{self.base_url}{endpoint}"
 
+        logger.debug(f"Making request to: {url} with params: {params}")
+
         for attempt in range(retries):
             self.rate_limiter.acquire()
 
@@ -155,16 +220,26 @@ class MoralisClient:
                     params=params,
                     timeout=REQUEST_TIMEOUT,
                 )
+
+                logger.debug(f"Response status: {response.status_code}")
+
+                if response.status_code == 401:
+                    logger.error("API Key is invalid or unauthorized")
+                    return None
+
                 response.raise_for_status()
-                return response.json()
+                result = response.json()
+                logger.debug(f"Response data keys: {result.keys() if isinstance(result, dict) else 'list'}")
+                return result
 
             except requests.exceptions.HTTPError as e:
+                logger.warning(f"HTTP Error: {e}, Status: {response.status_code}")
                 if response.status_code == 429:  # Rate limited
                     wait_time = RETRY_DELAY * (2 ** attempt)
+                    logger.info(f"Rate limited, waiting {wait_time}s")
                     time.sleep(wait_time)
                     continue
                 elif response.status_code in (400, 404):
-                    # Bad request or not found - likely invalid address
                     with self._stats_lock:
                         self.error_count += 1
                     return None
@@ -177,6 +252,7 @@ class MoralisClient:
                     raise
 
             except requests.exceptions.RequestException as e:
+                logger.warning(f"Request error: {e}")
                 with self._stats_lock:
                     self.error_count += 1
                 if attempt < retries - 1:
@@ -186,16 +262,73 @@ class MoralisClient:
 
         return None
 
-    def get_native_balance(self, address: str, chain: str) -> Optional[str]:
+    def get_wallet_tokens_with_price(self, address: str, chain: str) -> List[Token]:
         """
-        Get native token balance for an address on a specific chain.
+        Get all tokens (native + ERC20) with prices for a wallet on a chain.
+        Uses the v2.2 endpoint: /wallets/{address}/tokens
 
         Args:
             address: Ethereum address (0x...)
             chain: Chain ID (e.g., 'eth', 'bsc')
 
         Returns:
-            Balance in wei as string, or None on error
+            List of Token objects
+        """
+        chain_hex = CHAIN_HEX_IDS.get(chain)
+        if not chain_hex:
+            logger.warning(f"Unknown chain: {chain}")
+            return []
+
+        tokens = []
+        cursor = None
+
+        while True:
+            params = {
+                "chain": chain_hex,
+                "exclude_spam": "true",
+            }
+            if cursor:
+                params["cursor"] = cursor
+
+            # Use the v2.2 wallets endpoint
+            response = self._make_request(
+                f"/wallets/{address}/tokens",
+                params=params,
+            )
+
+            if response is None:
+                logger.warning(f"No response for {address} on {chain}")
+                break
+
+            # Handle response - can be list or dict with 'result'
+            token_list = []
+            if isinstance(response, list):
+                token_list = response
+            elif isinstance(response, dict):
+                token_list = response.get("result", [])
+                cursor = response.get("cursor")
+
+            logger.info(f"Found {len(token_list)} tokens for {address[:10]}... on {chain}")
+
+            for token_data in token_list:
+                try:
+                    token = Token.from_wallet_token_response(token_data, chain)
+                    if token.amount > 0:
+                        tokens.append(token)
+                        logger.debug(f"Token: {token.symbol} = {token.amount} (${token.value_usd:.2f})")
+                except Exception as e:
+                    logger.warning(f"Error parsing token: {e}")
+                    continue
+
+            # Check if we need to paginate
+            if not cursor or not isinstance(response, dict):
+                break
+
+        return tokens
+
+    def get_native_balance(self, address: str, chain: str) -> Optional[str]:
+        """
+        Get native token balance for an address on a specific chain.
         """
         chain_hex = CHAIN_HEX_IDS.get(chain)
         if not chain_hex:
@@ -249,20 +382,10 @@ class MoralisClient:
 
         return price
 
-    def get_erc20_balances(
-        self,
-        address: str,
-        chain: str,
-    ) -> List[Token]:
+    def get_erc20_balances(self, address: str, chain: str) -> List[Token]:
         """
         Get all ERC20 token balances for an address on a specific chain.
-
-        Args:
-            address: Ethereum address (0x...)
-            chain: Chain ID (e.g., 'eth', 'bsc')
-
-        Returns:
-            List of Token objects
+        Fallback method using older endpoint.
         """
         chain_hex = CHAIN_HEX_IDS.get(chain)
         if not chain_hex:
@@ -308,77 +431,52 @@ class MoralisClient:
     ) -> Dict[str, List[Token]]:
         """
         Get all tokens for an address across specified chains.
-
-        Args:
-            address: Ethereum address (0x...)
-            chains: List of chain IDs to query. If None, query all supported chains
-            filter_dust: Whether to filter out tokens worth less than min_value
-            min_value: Minimum token value in USD
-            include_native: Whether to include native token balance
-
-        Returns:
-            Dictionary mapping chain ID to list of tokens
         """
         if chains is None:
             chains = SUPPORTED_CHAIN_IDS
 
         result: Dict[str, List[Token]] = {}
 
+        logger.info(f"Scanning address {address[:10]}... across {len(chains)} chains")
+
         for chain in chains:
             chain_tokens = []
 
-            # Get native balance
-            if include_native:
-                native_balance = self.get_native_balance(address, chain)
-                if native_balance and int(native_balance) > 0:
-                    native_price = self.get_native_price(chain)
-                    native_token = Token.from_native_balance(native_balance, chain, native_price)
-                    if not filter_dust or native_token.value_usd >= min_value:
-                        chain_tokens.append(native_token)
+            # Try the new v2.2 endpoint first
+            tokens = self.get_wallet_tokens_with_price(address, chain)
 
-            # Get ERC20 tokens
-            erc20_tokens = self.get_erc20_balances(address, chain)
+            if tokens:
+                for token in tokens:
+                    # Apply dust filter
+                    if filter_dust and token.value_usd < min_value and token.value_usd > 0:
+                        continue
+                    # Include tokens with 0 price but non-zero balance (price might be unavailable)
+                    if token.amount > 0:
+                        chain_tokens.append(token)
+            else:
+                # Fallback to old method
+                logger.debug(f"Falling back to legacy method for {chain}")
 
-            for token in erc20_tokens:
-                if not filter_dust or token.value_usd >= min_value:
-                    chain_tokens.append(token)
+                # Get native balance
+                if include_native:
+                    native_balance = self.get_native_balance(address, chain)
+                    if native_balance and int(native_balance) > 0:
+                        native_price = self.get_native_price(chain)
+                        native_token = Token.from_native_balance(native_balance, chain, native_price)
+                        if not filter_dust or native_token.value_usd >= min_value:
+                            chain_tokens.append(native_token)
+
+                # Get ERC20 tokens
+                erc20_tokens = self.get_erc20_balances(address, chain)
+                for token in erc20_tokens:
+                    if not filter_dust or token.value_usd >= min_value:
+                        chain_tokens.append(token)
 
             if chain_tokens:
                 result[chain] = chain_tokens
+                logger.info(f"  {chain}: {len(chain_tokens)} tokens")
 
         return result
-
-    def get_active_chains(self, address: str) -> List[str]:
-        """
-        Get list of chains where the address has any balance.
-        This is a quick check to optimize full scans.
-
-        Args:
-            address: Ethereum address (0x...)
-
-        Returns:
-            List of chain IDs with activity
-        """
-        active_chains = []
-
-        for chain in SUPPORTED_CHAIN_IDS:
-            # Quick check: just look for native balance
-            balance = self.get_native_balance(address, chain)
-            if balance and int(balance) > 0:
-                active_chains.append(chain)
-                continue
-
-            # Check for any ERC20 tokens (limited query)
-            chain_hex = CHAIN_HEX_IDS.get(chain)
-            if chain_hex:
-                response = self._make_request(
-                    f"/{address}/erc20",
-                    params={"chain": chain_hex, "limit": 1},
-                )
-                if response and response.get("result"):
-                    active_chains.append(chain)
-
-        return active_chains
 
     def get_stats(self) -> Dict[str, int]:
         """Get request statistics."""
