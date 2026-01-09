@@ -339,7 +339,7 @@ class MoralisClient:
             params={"chain": chain_hex},
         )
 
-        if response and "balance" in response:
+        if response and isinstance(response, dict) and "balance" in response:
             return response["balance"]
         return None
 
@@ -375,7 +375,7 @@ class MoralisClient:
         )
 
         price = 0.0
-        if response and "usdPrice" in response:
+        if response and isinstance(response, dict) and "usdPrice" in response:
             price = float(response["usdPrice"])
             with self._prices_lock:
                 self._native_prices[chain] = price
@@ -410,12 +410,26 @@ class MoralisClient:
             if response is None:
                 break
 
-            for token_data in response.get("result", []):
-                token = Token.from_erc20_response(token_data, chain)
-                if token.amount > 0:
-                    tokens.append(token)
+            # Handle both list and dict responses
+            token_list = []
+            if isinstance(response, list):
+                token_list = response
+                cursor = None
+            elif isinstance(response, dict):
+                token_list = response.get("result", [])
+                cursor = response.get("cursor")
+            else:
+                break
 
-            cursor = response.get("cursor")
+            for token_data in token_list:
+                try:
+                    token = Token.from_erc20_response(token_data, chain)
+                    if token.amount > 0:
+                        tokens.append(token)
+                except Exception as e:
+                    logger.warning(f"Error parsing ERC20 token: {e}")
+                    continue
+
             if not cursor:
                 break
 
