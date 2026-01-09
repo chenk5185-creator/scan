@@ -38,6 +38,7 @@ class Token:
     logo_url: str
     is_verified: bool
     is_native: bool
+    is_core: bool = False  # Core tokens (native or major tokens)
 
     @classmethod
     def from_wallet_token_response(cls, data: Dict[str, Any], chain: str) -> "Token":
@@ -70,6 +71,8 @@ class Token:
         if is_native:
             token_address = "0x0000000000000000000000000000000000000000"
 
+        is_verified = data.get("verified_contract", False) or data.get("verifiedContract", False)
+
         return cls(
             chain=chain,
             symbol=data.get("symbol", "") or "UNKNOWN",
@@ -81,8 +84,9 @@ class Token:
             raw_amount=raw_amount,
             value_usd=value_usd,
             logo_url=data.get("logo", "") or data.get("thumbnail", "") or "",
-            is_verified=data.get("verified_contract", False) or data.get("verifiedContract", False),
+            is_verified=is_verified,
             is_native=is_native,
+            is_core=is_native or is_verified,  # Native or verified tokens are considered core
         )
 
     @classmethod
@@ -106,6 +110,7 @@ class Token:
             price = float(data.get("usdPrice", 0))
 
         value_usd = price * amount
+        is_verified = data.get("verified_contract", False)
 
         return cls(
             chain=chain,
@@ -118,8 +123,9 @@ class Token:
             raw_amount=raw_amount,
             value_usd=value_usd,
             logo_url=data.get("logo", "") or data.get("thumbnail", "") or "",
-            is_verified=data.get("verified_contract", False),
+            is_verified=is_verified,
             is_native=False,
+            is_core=is_verified,
         )
 
     @classmethod
@@ -149,6 +155,7 @@ class Token:
             logo_url="",
             is_verified=True,
             is_native=True,
+            is_core=True,  # Native tokens are always core
         )
 
 
