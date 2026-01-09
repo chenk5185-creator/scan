@@ -110,18 +110,37 @@ def parse_addresses(text: str) -> List[str]:
     return unique
 
 
-def run_scan(addresses: List[str], api_key: str, workers: int, min_value: float) -> List[WalletResult]:
+def run_scan(addresses: List[str], api_key: str, workers: int, min_value: float) -> tuple:
     """运行钱包扫描。"""
+    import logging
+    import io
+
+    # 创建内存日志处理器
+    log_stream = io.StringIO()
+    handler = logging.StreamHandler(log_stream)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(message)s')
+    handler.setFormatter(formatter)
+
+    # 添加到所有相关的 logger
+    for logger_name in ['moralis_client', 'scanner', '__main__', 'root']:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+
     results = []
+    try:
+        with WalletScanner(
+            api_key=api_key,
+            max_workers=workers,
+            min_token_value=min_value,
+        ) as scanner:
+            results = scanner.scan_wallets(addresses, show_progress=False)
+    finally:
+        # 获取日志内容
+        log_content = log_stream.getvalue()
 
-    with WalletScanner(
-        api_key=api_key,
-        max_workers=workers,
-        min_token_value=min_value,
-    ) as scanner:
-        results = scanner.scan_wallets(addresses, show_progress=False)
-
-    return results
+    return results, log_content
 
 
 def create_excel_download(processor: DataProcessor) -> bytes:
@@ -455,11 +474,17 @@ def main():
                 st.info(f"📋 扫描地址: {addresses}")
 
             # 运行扫描
-            import logging
-            logging.basicConfig(level=logging.INFO)
-            results = run_scan(addresses, api_key, workers, min_value)
+            results, log_content = run_scan(addresses, api_key, workers, min_value)
 
             progress_bar.progress(50)
+
+            # 显示 API 调用日志
+            with debug_container:
+                st.markdown("### 📋 API 调用日志")
+                if log_content:
+                    st.code(log_content, language="text")
+                else:
+                    st.warning("没有捕获到日志")
 
             # 显示扫描结果统计
             with debug_container:
