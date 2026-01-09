@@ -206,7 +206,7 @@ class MoralisClient:
         """Make an API request with rate limiting and retries."""
         url = f"{self.base_url}{endpoint}"
 
-        logger.debug(f"Making request to: {url} with params: {params}")
+        logger.info(f"API Request: {url} params: {params}")
 
         for attempt in range(retries):
             self.rate_limiter.acquire()
@@ -221,7 +221,7 @@ class MoralisClient:
                     timeout=REQUEST_TIMEOUT,
                 )
 
-                logger.debug(f"Response status: {response.status_code}")
+                logger.info(f"Response status: {response.status_code}")
 
                 if response.status_code == 401:
                     logger.error("API Key is invalid or unauthorized")
@@ -229,7 +229,7 @@ class MoralisClient:
 
                 response.raise_for_status()
                 result = response.json()
-                logger.debug(f"Response data keys: {result.keys() if isinstance(result, dict) else 'list'}")
+                logger.info(f"Response: {str(result)[:500]}")
                 return result
 
             except requests.exceptions.HTTPError as e:

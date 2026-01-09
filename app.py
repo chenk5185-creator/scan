@@ -451,9 +451,12 @@ def main():
 
             # 显示 API Key 状态（只显示前几位）
             with debug_container:
-                st.info(f"🔑 API Key: {api_key[:8]}...{api_key[-4:]} (长度: {len(api_key)})")
+                st.info(f"🔑 API Key: {api_key[:20]}... (长度: {len(api_key)})")
+                st.info(f"📋 扫描地址: {addresses}")
 
             # 运行扫描
+            import logging
+            logging.basicConfig(level=logging.INFO)
             results = run_scan(addresses, api_key, workers, min_value)
 
             progress_bar.progress(50)
