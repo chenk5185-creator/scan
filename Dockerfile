@@ -9,8 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose port
-EXPOSE 8501
+# Railway uses PORT env variable
+ENV PORT=8501
 
-# Run streamlit
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+# Run streamlit with dynamic port
+CMD streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
