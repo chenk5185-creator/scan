@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Any
 from collections import defaultdict
 
 from scanner import WalletResult
-from debank_client import Token
+from moralis_client import Token
 from config import SUPPORTED_CHAINS, CHAIN_TO_SHEET
 
 
