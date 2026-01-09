@@ -3,12 +3,12 @@
 Multi-Chain Wallet Scanner
 ==========================
 
-Scans multiple Ethereum addresses across 11 blockchains using DeBank OpenAPI
+Scans multiple Ethereum addresses across 8 blockchains using Moralis API
 and generates a comprehensive Excel report.
 
 Supported Chains:
 - Ethereum, BSC, Polygon, Arbitrum, Optimism
-- Base, Blast, zkSync Era, Linea, Merlin
+- Base, Linea, zkSync Era
 
 Usage:
     python scan.py -i wallets.txt -o report.xlsx
@@ -16,7 +16,7 @@ Usage:
     cat wallets.txt | python scan.py -o report.xlsx
 
 Environment:
-    DEBANK_API_KEY: Your DeBank Pro API key (required)
+    MORALIS_API_KEY: Your Moralis API key (required)
 """
 
 import argparse
@@ -68,7 +68,7 @@ Examples:
   python scan.py -i wallets.txt -o report.xlsx -w 5 --min-value 1.0
 
 Environment Variables:
-  DEBANK_API_KEY    Your DeBank Pro API key (required)
+  MORALIS_API_KEY    Your Moralis API key (required, free at moralis.io)
         """,
     )
 
@@ -111,7 +111,7 @@ Environment Variables:
         "--api-key",
         type=str,
         default=None,
-        help="DeBank API key (overrides DEBANK_API_KEY env var)",
+        help="Moralis API key (overrides MORALIS_API_KEY env var)",
     )
 
     parser.add_argument(
@@ -211,14 +211,14 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Get API key
-    api_key = args.api_key or os.getenv("DEBANK_API_KEY")
+    api_key = args.api_key or os.getenv("MORALIS_API_KEY")
     if not api_key:
-        logger.error("DeBank API key is required. Set DEBANK_API_KEY environment variable or use --api-key")
+        logger.error("Moralis API key is required. Set MORALIS_API_KEY environment variable or use --api-key")
         sys.exit(1)
 
     # Print configuration
     print("\n" + "=" * 60)
-    print("Multi-Chain Wallet Scanner")
+    print("Multi-Chain Wallet Scanner (Moralis API)")
     print("=" * 60)
     print(f"Supported Chains: {', '.join(SUPPORTED_CHAINS.values())}")
     print(f"Workers: {args.workers}")

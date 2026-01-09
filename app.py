@@ -156,9 +156,9 @@ def render_sidebar():
 
     # API Key
     api_key = st.sidebar.text_input(
-        "DeBank API Key",
+        "Moralis API Key",
         type="password",
-        help="Enter your DeBank Pro API key",
+        help="Enter your Moralis API key (get free at moralis.io)",
     )
 
     st.sidebar.markdown("---")
@@ -405,7 +405,7 @@ def main():
     # Header
     st.markdown('<p class="main-header">🔍 Multi-Chain Wallet Scanner</p>', unsafe_allow_html=True)
     st.markdown(
-        '<p class="sub-header">Scan wallet addresses across 11 blockchains using DeBank API</p>',
+        '<p class="sub-header">Scan wallet addresses across 8 blockchains using Moralis API</p>',
         unsafe_allow_html=True,
     )
 
@@ -441,7 +441,7 @@ def main():
         )
 
     if not api_key:
-        st.warning("⚠️ Please enter your DeBank API key in the sidebar")
+        st.warning("⚠️ Please enter your Moralis API key in the sidebar")
     elif not addresses:
         st.info("💡 Enter wallet addresses above to begin scanning")
 

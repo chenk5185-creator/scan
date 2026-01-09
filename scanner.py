@@ -1,5 +1,5 @@
 """
-Multi-threaded wallet scanner using DeBank API.
+Multi-threaded wallet scanner using Moralis API.
 """
 import time
 import threading
@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Callable
 from queue import Queue
 import logging
 
-from debank_client import DeBankClient, Token
+from moralis_client import MoralisClient, Token
 from config import (
     MAX_WORKERS,
     MIN_TOKEN_VALUE_USD,
@@ -86,7 +86,7 @@ class WalletScanner:
         Initialize the scanner.
 
         Args:
-            api_key: DeBank API key
+            api_key: Moralis API key
             max_workers: Number of concurrent workers
             min_token_value: Minimum token value to include (USD)
             progress_callback: Optional callback for progress updates
@@ -97,14 +97,14 @@ class WalletScanner:
         self.progress_callback = progress_callback
 
         # Shared client for rate limiting
-        self._client: Optional[DeBankClient] = None
+        self._client: Optional[MoralisClient] = None
         self._client_lock = threading.Lock()
 
-    def _get_client(self) -> DeBankClient:
+    def _get_client(self) -> MoralisClient:
         """Get or create the shared client."""
         with self._client_lock:
             if self._client is None:
-                self._client = DeBankClient(api_key=self.api_key)
+                self._client = MoralisClient(api_key=self.api_key)
             return self._client
 
     def _scan_single_wallet(self, address: str) -> WalletResult:
@@ -123,27 +123,21 @@ class WalletScanner:
         try:
             client = self._get_client()
 
-            # Step 1: Get active chains for this address
-            active_chains = client.get_used_chains(address)
-            result.active_chains = active_chains
+            # Get all tokens across all supported chains
+            tokens_by_chain = client.get_all_tokens_for_address(
+                address,
+                chains=SUPPORTED_CHAIN_IDS,
+                filter_dust=True,
+                min_value=self.min_token_value,
+                include_native=True,
+            )
 
-            if not active_chains:
-                result.scan_time = time.time() - start_time
-                return result
+            result.tokens = tokens_by_chain
+            result.active_chains = list(tokens_by_chain.keys())
 
-            # Step 2: Get tokens for each active chain
-            for chain in active_chains:
-                tokens = client.get_token_list(address, chain, is_all=True)
-
-                # Filter dust tokens
-                filtered_tokens = [
-                    t for t in tokens
-                    if t.value_usd >= self.min_token_value
-                ]
-
-                if filtered_tokens:
-                    result.tokens[chain] = filtered_tokens
-                    result.total_value_usd += sum(t.value_usd for t in filtered_tokens)
+            # Calculate total value
+            for chain, tokens in tokens_by_chain.items():
+                result.total_value_usd += sum(t.value_usd for t in tokens)
 
             result.scan_time = time.time() - start_time
             return result
